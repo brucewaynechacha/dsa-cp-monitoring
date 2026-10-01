@@ -596,9 +596,12 @@
 
     if (lcHandle) {
       try {
-        const [calRes, contestRes] = await Promise.allSettled([
+        const [calRes, solvedRes, profileRes, contestRes, acSubRes] = await Promise.allSettled([
           fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(lcHandle)}/calendar`),
-          fetch(`https://alfa-leetcode-api.onrender.com/userContestRankingInfo/${encodeURIComponent(lcHandle)}`)
+          fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(lcHandle)}/solved`),
+          fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(lcHandle)}`),
+          fetch(`https://alfa-leetcode-api.onrender.com/userContestRankingInfo/${encodeURIComponent(lcHandle)}`),
+          fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(lcHandle)}/acSubmission?limit=30`)
         ]);
 
         const dailyMap = {};
@@ -614,6 +617,16 @@
           }
           streak = calJson?.streak || 0;
           totalActiveDays = calJson?.totalActiveDays || 0;
+        }
+
+        let solvedData = null;
+        if (solvedRes.status === 'fulfilled' && solvedRes.value.ok) {
+          solvedData = await solvedRes.value.json().catch(() => null);
+        }
+
+        let profileData = null;
+        if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
+          profileData = await profileRes.value.json().catch(() => null);
         }
 
         let contestInfo = null;
@@ -642,26 +655,49 @@
           lcContests.reverse();
         }
 
+        let recentSubs = [];
+        if (acSubRes.status === 'fulfilled' && acSubRes.value.ok) {
+          const acJson = await acSubRes.value.json().catch(() => null);
+          if (Array.isArray(acJson?.submission)) {
+            recentSubs = acJson.submission.map((sub) => ({
+              platform: 'leetcode',
+              title: sub.title,
+              url: `https://leetcode.com/problems/${sub.titleSlug}/`,
+              timestamp: parseInt(sub.timestamp, 10),
+              verdict: 'Accepted',
+              isContest: false
+            }));
+          }
+        }
+
+        // Accurate solved count: unique problems, not submission count
+        const totalSolvedCount = solvedData?.solvedProblem != null
+          ? solvedData.solvedProblem
+          : (solvedData?.acSubmissionNum?.find(s => s.difficulty === 'All')?.count || Object.keys(dailyMap).length);
+
         lcData = {
           platform: 'leetcode',
           username: lcHandle,
           profile: {
-            name: lcHandle,
-            avatar: '',
-            ranking: null,
+            name: profileData?.name || lcHandle,
+            avatar: profileData?.avatar || '',
+            ranking: profileData?.ranking || null,
             contestRating: Math.round(contestInfo?.rating || 0),
             globalRanking: contestInfo?.globalRanking || null,
             topPercentage: contestInfo?.topPercentage || null,
             contestsAttended: contestInfo?.attendedContestsCount || lcContests.length
           },
-          totalSolved: Object.values(dailyMap).reduce((a, b) => a + b, 0),
+          totalSolved: totalSolvedCount,
+          easySolved: solvedData?.easySolved || 0,
+          mediumSolved: solvedData?.mediumSolved || 0,
+          hardSolved: solvedData?.hardSolved || 0,
           totalContestSolved: 0,
           streak,
           totalActiveDays: totalActiveDays || Object.keys(dailyMap).length,
           dailyMap,
           dailyContestMap: {},
           contests: lcContests,
-          recentSubmissions: []
+          recentSubmissions: recentSubs
         };
       } catch (e) {
         errors.leetcode = 'Direct LeetCode query not reachable: ' + e.message;

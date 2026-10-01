@@ -109,17 +109,29 @@ export async function fetchLeetCode(username) {
           const key = toDateKey(date);
           dailyMap[key] = (dailyMap[key] || 0) + count;
         }
-        const total = Object.values(dailyMap).reduce((a, b) => a + b, 0);
+
+        let solvedData = null;
+        try {
+          const sRes = await fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(username)}/solved`, {
+            signal: AbortSignal.timeout(8000)
+          });
+          if (sRes.ok) solvedData = await sRes.json();
+        } catch (_) {}
+
+        const totalSolvedCount = solvedData?.solvedProblem != null
+          ? solvedData.solvedProblem
+          : (solvedData?.acSubmissionNum?.find(s => s.difficulty === 'All')?.count || Object.keys(dailyMap).length);
+
         const result = {
           platform: 'leetcode',
           username,
           profile: { name: username, avatar: '', ranking: null },
-          totalSolved: total,
-          easySolved: 0,
-          mediumSolved: 0,
-          hardSolved: 0,
+          totalSolved: totalSolvedCount,
+          easySolved: solvedData?.easySolved || 0,
+          mediumSolved: solvedData?.mediumSolved || 0,
+          hardSolved: solvedData?.hardSolved || 0,
           streak: backupJson.streak || 0,
-          totalActiveDays: backupJson.totalActiveDays || 0,
+          totalActiveDays: backupJson.totalActiveDays || Object.keys(dailyMap).length,
           dailyMap,
           dailyContestMap: {},
           totalContestSolved: 0,
