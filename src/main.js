@@ -1,5 +1,3 @@
-import './style.css';
-
 // DSA Activity Heatmap — Minimalist Frontend
 (function () {
   'use strict';
