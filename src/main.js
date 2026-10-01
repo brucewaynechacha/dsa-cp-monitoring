@@ -372,23 +372,17 @@ import './style.css';
 
       try {
         const res = await fetch(`/api/user-data?${params.toString()}`);
+        if (!res.ok) {
+          throw new Error(`Server status ${res.status}`);
+        }
         const json = await res.json().catch(() => null);
-
-        if (!res.ok || !json?.success) {
-          const errMsg = json?.error || `Server responded with status ${res.status}`;
-          throw new Error(errMsg);
+        if (!json?.success || !json?.data) {
+          throw new Error(json?.error || 'Invalid API data format');
         }
-
         data = json.data;
-      } catch (networkErr) {
-        console.warn('Backend API request failed:', networkErr);
-        // Only attempt client-side fallback if the server itself was unreachable
-        if (networkErr.message.includes('Failed to fetch') || networkErr.message.includes('NetworkError')) {
-          showStatus('Backend server not reachable on localhost:3000. Trying direct connection...', 'info');
-          data = await fetchClientSide(lcHandle, cfHandle);
-        } else {
-          throw networkErr;
-        }
+      } catch (backendErr) {
+        console.warn('Backend API request unavailable, using client-side direct sync:', backendErr.message);
+        data = await fetchClientSide(lcHandle, cfHandle);
       }
 
       if (!data) {
@@ -423,63 +417,180 @@ import './style.css';
       renderSavedChips();
     } catch (err) {
       console.error('fetchUserData error:', err);
-      let userMsg = err.message;
-      if (userMsg.includes('Failed to fetch') || userMsg.includes('fetch failed')) {
-        userMsg = 'Network connection failed. Make sure the server is running with `npm start` and visit http://localhost:3000.';
-      }
-      showStatus(userMsg, 'error');
+      showStatus(err.message || 'Error loading profile data', 'error');
     } finally {
       setLoading(false);
     }
   }
 
-  // Client-side fallback for static deployments
+  // Calculate streak on client
+  function calculateStreakClient(dailyMap) {
+    const dates = Object.keys(dailyMap)
+      .filter((d) => {
+        const v = dailyMap[d];
+        return typeof v === 'number' ? v > 0 : (v?.total || 0) > 0;
+      })
+      .sort();
+
+    if (dates.length === 0) return { currentStreak: 0, longestStreak: 0, activeDays: 0 };
+
+    const set = new Set(dates);
+    const now = new Date();
+    let currentStreak = 0;
+    let checkDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+    const todayKey = formatDateStr(checkDate);
+    if (!set.has(todayKey)) {
+      checkDate.setUTCDate(checkDate.getUTCDate() - 1);
+    }
+
+    while (set.has(formatDateStr(checkDate))) {
+      currentStreak++;
+      checkDate.setUTCDate(checkDate.getUTCDate() - 1);
+    }
+
+    let longestStreak = 0;
+    let tempStreak = 0;
+    let prevDate = null;
+
+    for (const dateStr of dates) {
+      const curDate = new Date(dateStr + 'T00:00:00Z');
+      if (!prevDate) {
+        tempStreak = 1;
+      } else {
+        const diffDays = Math.round((curDate - prevDate) / (1000 * 60 * 60 * 24));
+        if (diffDays === 1) {
+          tempStreak++;
+        } else {
+          tempStreak = 1;
+        }
+      }
+      if (tempStreak > longestStreak) longestStreak = tempStreak;
+      prevDate = curDate;
+    }
+
+    return {
+      currentStreak,
+      longestStreak,
+      activeDays: dates.length
+    };
+  }
+
+  // Client-side fallback for static deployments (Vercel static, GitHub Pages, Netlify)
   async function fetchClientSide(lcHandle, cfHandle) {
     let cfData = null;
     let lcData = null;
     const errors = {};
+    let cfContests = [];
+    let lcContests = [];
 
     if (cfHandle) {
       try {
-        const cfRes = await fetch(`https://codeforces.com/api/user.status?handle=${encodeURIComponent(cfHandle)}&from=1&count=10000`);
-        const cfJson = await cfRes.json();
-        if (cfJson.status === 'OK') {
-          const subs = cfJson.result || [];
-          const dailyMap = {};
-          const dailyAcceptedMap = {};
-          const solvedSet = new Set();
-          const recent = [];
+        const [cfStatusRes, cfInfoRes, cfRatingRes] = await Promise.allSettled([
+          fetch(`https://codeforces.com/api/user.status?handle=${encodeURIComponent(cfHandle)}&from=1&count=10000`),
+          fetch(`https://codeforces.com/api/user.info?handles=${encodeURIComponent(cfHandle)}`),
+          fetch(`https://codeforces.com/api/user.rating?handle=${encodeURIComponent(cfHandle)}`)
+        ]);
 
-          subs.forEach((sub) => {
-            const dateStr = formatDateStr(new Date(sub.creationTimeSeconds * 1000));
-            dailyMap[dateStr] = (dailyMap[dateStr] || 0) + 1;
-            const isAc = sub.verdict === 'OK';
-            if (isAc) {
-              dailyAcceptedMap[dateStr] = (dailyAcceptedMap[dateStr] || 0) + 1;
-              solvedSet.add(`${sub.problem.contestId}-${sub.problem.index}`);
-            }
-            if (recent.length < 30) {
-              recent.push({
-                platform: 'codeforces',
-                title: `${sub.problem.index}. ${sub.problem.name}`,
-                url: `https://codeforces.com/contest/${sub.problem.contestId}/problem/${sub.problem.index}`,
-                timestamp: sub.creationTimeSeconds,
-                verdict: isAc ? 'Accepted' : (sub.verdict || 'Rejected')
-              });
-            }
-          });
-
-          cfData = {
-            platform: 'codeforces',
-            username: cfHandle,
-            totalSolved: solvedSet.size,
-            dailyMap,
-            dailyAcceptedMap,
-            recentSubmissions: recent
-          };
-        } else {
-          errors.codeforces = cfJson.comment || 'User not found';
+        let subs = [];
+        if (cfStatusRes.status === 'fulfilled' && cfStatusRes.value.ok) {
+          const sJson = await cfStatusRes.value.json().catch(() => null);
+          if (sJson?.status === 'OK') {
+            subs = sJson.result || [];
+          } else {
+            errors.codeforces = sJson?.comment || 'Codeforces user error';
+          }
         }
+
+        let userInfo = null;
+        if (cfInfoRes.status === 'fulfilled' && cfInfoRes.value.ok) {
+          const uJson = await cfInfoRes.value.json().catch(() => null);
+          if (uJson?.status === 'OK' && uJson.result?.length > 0) {
+            userInfo = uJson.result[0];
+          }
+        }
+
+        if (cfRatingRes.status === 'fulfilled' && cfRatingRes.value.ok) {
+          const rJson = await cfRatingRes.value.json().catch(() => null);
+          if (rJson?.status === 'OK' && Array.isArray(rJson.result)) {
+            cfContests = rJson.result.map(c => ({
+              platform: 'codeforces',
+              contestId: c.contestId,
+              contestName: c.contestName,
+              contestUrl: `https://codeforces.com/contest/${c.contestId}`,
+              timestamp: c.ratingUpdateTimeSeconds,
+              rank: c.rank,
+              oldRating: c.oldRating,
+              newRating: c.newRating,
+              delta: c.newRating - c.oldRating
+            })).reverse();
+          }
+        }
+
+        const dailyMap = {};
+        const dailyAcceptedMap = {};
+        const dailyContestMap = {};
+        const solvedSet = new Set();
+        const contestSolvedSet = new Set();
+        const dayAcceptedProblemSet = new Set();
+        const recent = [];
+
+        subs.forEach((sub) => {
+          const dateStr = formatDateStr(new Date(sub.creationTimeSeconds * 1000));
+          dailyMap[dateStr] = (dailyMap[dateStr] || 0) + 1;
+          const isAc = sub.verdict === 'OK';
+          const pType = sub.author?.participantType;
+          const isContest = pType === 'CONTESTANT' || pType === 'VIRTUAL' || pType === 'OUT_OF_COMPETITION';
+          const pKey = `${sub.problem.contestId}-${sub.problem.index}`;
+
+          if (isAc) {
+            solvedSet.add(pKey);
+            const dayKey = `${dateStr}:${pKey}`;
+            if (!dayAcceptedProblemSet.has(dayKey)) {
+              dayAcceptedProblemSet.add(dayKey);
+              dailyAcceptedMap[dateStr] = (dailyAcceptedMap[dateStr] || 0) + 1;
+            }
+            if (isContest) {
+              contestSolvedSet.add(pKey);
+              dailyContestMap[dateStr] = (dailyContestMap[dateStr] || 0) + 1;
+            }
+          }
+
+          if (recent.length < 35) {
+            const contestId = sub.problem.contestId;
+            const index = sub.problem.index;
+            recent.push({
+              platform: 'codeforces',
+              title: `${sub.problem.index}. ${sub.problem.name}`,
+              url: contestId && index ? `https://codeforces.com/contest/${contestId}/problem/${index}` : 'https://codeforces.com/problemset',
+              timestamp: sub.creationTimeSeconds,
+              verdict: isAc ? 'Accepted' : (sub.verdict || 'Rejected'),
+              rating: sub.problem.rating || null,
+              tags: sub.problem.tags || [],
+              isContest
+            });
+          }
+        });
+
+        cfData = {
+          platform: 'codeforces',
+          username: userInfo?.handle || cfHandle,
+          profile: {
+            name: [userInfo?.firstName, userInfo?.lastName].filter(Boolean).join(' ') || userInfo?.handle || cfHandle,
+            avatar: userInfo?.avatar || userInfo?.titlePhoto || '',
+            rank: userInfo?.rank || '',
+            rating: userInfo?.rating || 0,
+            maxRating: userInfo?.maxRating || 0,
+            contestsAttended: cfContests.length
+          },
+          totalSolved: solvedSet.size,
+          totalContestSolved: contestSolvedSet.size,
+          dailyMap,
+          dailyAcceptedMap,
+          dailyContestMap,
+          contests: cfContests,
+          recentSubmissions: recent
+        };
       } catch (e) {
         errors.codeforces = e.message;
       }
@@ -487,27 +598,75 @@ import './style.css';
 
     if (lcHandle) {
       try {
-        const lcRes = await fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(lcHandle)}/calendar`);
-        if (lcRes.ok) {
-          const lcJson = await lcRes.json();
-          const rawCal = JSON.parse(lcJson.submissionCalendar || '{}');
-          const dailyMap = {};
+        const [calRes, contestRes] = await Promise.allSettled([
+          fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(lcHandle)}/calendar`),
+          fetch(`https://alfa-leetcode-api.onrender.com/userContestRankingInfo/${encodeURIComponent(lcHandle)}`)
+        ]);
+
+        const dailyMap = {};
+        let streak = 0;
+        let totalActiveDays = 0;
+
+        if (calRes.status === 'fulfilled' && calRes.value.ok) {
+          const calJson = await calRes.value.json().catch(() => null);
+          const rawCal = JSON.parse(calJson?.submissionCalendar || '{}');
           for (const [tsStr, count] of Object.entries(rawCal)) {
             const dateStr = formatDateStr(new Date(parseInt(tsStr, 10) * 1000));
             dailyMap[dateStr] = (dailyMap[dateStr] || 0) + count;
           }
-          lcData = {
-            platform: 'leetcode',
-            username: lcHandle,
-            totalSolved: Object.values(dailyMap).reduce((a, b) => a + b, 0),
-            streak: lcJson.streak || 0,
-            totalActiveDays: lcJson.totalActiveDays || 0,
-            dailyMap,
-            recentSubmissions: []
-          };
+          streak = calJson?.streak || 0;
+          totalActiveDays = calJson?.totalActiveDays || 0;
         }
+
+        let contestInfo = null;
+        if (contestRes.status === 'fulfilled' && contestRes.value.ok) {
+          const ctJson = await contestRes.value.json().catch(() => null);
+          contestInfo = ctJson?.data?.userContestRanking || null;
+          const hist = ctJson?.data?.userContestRankingHistory || [];
+          let prev = 1500;
+          for (const c of hist.filter(x => x.attended)) {
+            const nr = Math.round(c.rating || 0);
+            const delta = Math.round(nr - prev);
+            prev = nr;
+            const slug = c.contest.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            lcContests.push({
+              platform: 'leetcode',
+              contestName: c.contest.title,
+              contestUrl: `https://leetcode.com/contest/${slug}`,
+              timestamp: c.contest.startTime,
+              problemsSolved: c.problemsSolved,
+              totalProblems: c.totalProblems,
+              rank: c.ranking,
+              newRating: nr,
+              delta
+            });
+          }
+          lcContests.reverse();
+        }
+
+        lcData = {
+          platform: 'leetcode',
+          username: lcHandle,
+          profile: {
+            name: lcHandle,
+            avatar: '',
+            ranking: null,
+            contestRating: Math.round(contestInfo?.rating || 0),
+            globalRanking: contestInfo?.globalRanking || null,
+            topPercentage: contestInfo?.topPercentage || null,
+            contestsAttended: contestInfo?.attendedContestsCount || lcContests.length
+          },
+          totalSolved: Object.values(dailyMap).reduce((a, b) => a + b, 0),
+          totalContestSolved: 0,
+          streak,
+          totalActiveDays: totalActiveDays || Object.keys(dailyMap).length,
+          dailyMap,
+          dailyContestMap: {},
+          contests: lcContests,
+          recentSubmissions: []
+        };
       } catch (e) {
-        errors.leetcode = 'Direct LeetCode query blocked by browser CORS. Run `npm start` for full live sync.';
+        errors.leetcode = 'Direct LeetCode query not reachable: ' + e.message;
       }
     }
 
@@ -515,19 +674,36 @@ import './style.css';
     const combinedDailyMap = {};
     const lcDaily = lcData?.dailyMap || {};
     const cfDaily = cfData?.dailyAcceptedMap || cfData?.dailyMap || {};
+    const lcContest = lcData?.dailyContestMap || {};
+    const cfContest = cfData?.dailyContestMap || {};
     const allDates = new Set([...Object.keys(lcDaily), ...Object.keys(cfDaily)]);
 
     for (const d of allDates) {
       const lc = lcDaily[d] || 0;
       const cf = cfDaily[d] || 0;
-      combinedDailyMap[d] = { total: lc + cf, leetcode: lc, codeforces: cf };
+      const lcC = lcContest[d] || 0;
+      const cfC = cfContest[d] || 0;
+      combinedDailyMap[d] = {
+        total: lc + cf,
+        leetcode: lc,
+        codeforces: cf,
+        contest: lcC + cfC,
+        leetcodeContest: lcC,
+        codeforcesContest: cfC
+      };
     }
+
+    const streakInfo = calculateStreakClient(combinedDailyMap);
+    const combinedContests = [...lcContests, ...cfContests].sort((a, b) => b.timestamp - a.timestamp);
 
     return {
       leetcode: lcData,
       codeforces: cfData,
       combinedDailyMap,
-      streakInfo: { currentStreak: 0, longestStreak: 0, activeDays: allDates.size },
+      streakInfo,
+      totalContestSolved: (lcData?.totalContestSolved || 0) + (cfData?.totalContestSolved || 0),
+      contests: combinedContests,
+      upcomingContests: state.upcomingContests || [],
       errors: Object.keys(errors).length > 0 ? errors : null
     };
   }
@@ -1017,14 +1193,39 @@ import './style.css';
     try {
       const res = await fetch('/api/upcoming-contests');
       if (res.ok) {
-        const json = await res.json();
-        if (json?.success && Array.isArray(json.data)) {
+        const json = await res.json().catch(() => null);
+        if (json?.success && Array.isArray(json.data) && json.data.length > 0) {
           state.upcomingContests = json.data;
           renderUpcomingContests();
+          return;
+        }
+      }
+    } catch (_) {}
+
+    // Fallback: direct Codeforces upcoming contests
+    try {
+      const cfRes = await fetch('https://codeforces.com/api/contest.list?gym=false');
+      if (cfRes.ok) {
+        const cfJson = await cfRes.json().catch(() => null);
+        if (cfJson?.status === 'OK' && Array.isArray(cfJson.result)) {
+          const upcoming = cfJson.result
+            .filter((c) => c.phase === 'BEFORE')
+            .reverse()
+            .map((c) => ({
+              platform: 'codeforces',
+              title: c.name,
+              url: `https://codeforces.com/contestRegistration/${c.id}`,
+              startTime: c.startTimeSeconds,
+              duration: c.durationSeconds
+            }));
+          if (upcoming.length > 0) {
+            state.upcomingContests = upcoming;
+            renderUpcomingContests();
+          }
         }
       }
     } catch (e) {
-      console.warn('Initial upcoming contests fetch failed:', e);
+      console.warn('Direct upcoming contests fetch failed:', e);
     }
   }
 
@@ -1533,12 +1734,17 @@ import './style.css';
     if (lcHandle) params.set('leetcode', lcHandle);
     if (cfHandle) params.set('codeforces', cfHandle);
 
-    const res = await fetch(`/api/user-data?${params.toString()}`);
-    const json = await res.json().catch(() => null);
-    if (!res.ok || !json?.success) {
-      throw new Error(json?.error || `Failed fetching data for ${lcHandle || cfHandle}`);
+    try {
+      const res = await fetch(`/api/user-data?${params.toString()}`);
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      const json = await res.json().catch(() => null);
+      if (!json?.success || !json?.data) {
+        throw new Error(json?.error || 'Invalid API data');
+      }
+      return json.data;
+    } catch (_) {
+      return await fetchClientSide(lcHandle, cfHandle);
     }
-    return json.data;
   }
 
   async function runComparison() {

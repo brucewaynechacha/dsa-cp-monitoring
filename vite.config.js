@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import { handleApiRequest } from './api.js';
+import { handleApiRequest } from './server-api.js';
 
 export default defineConfig({
   server: {
