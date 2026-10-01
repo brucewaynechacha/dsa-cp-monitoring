@@ -629,6 +629,10 @@
           profileData = await profileRes.value.json().catch(() => null);
         }
 
+        let totalLcContestSolved = 0;
+        const dailyContestMap = {};
+        const contestRecent = [];
+
         let contestInfo = null;
         if (contestRes.status === 'fulfilled' && contestRes.value.ok) {
           const ctJson = await contestRes.value.json().catch(() => null);
@@ -640,6 +644,27 @@
             const delta = Math.round(nr - prev);
             prev = nr;
             const slug = c.contest.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            const solved = c.problemsSolved || 0;
+
+            if (solved > 0) {
+              totalLcContestSolved += solved;
+              const contestDate = new Date(c.contest.startTime * 1000);
+              const key = formatDateStr(contestDate);
+
+              dailyMap[key] = (dailyMap[key] || 0) + solved;
+              dailyContestMap[key] = (dailyContestMap[key] || 0) + solved;
+
+              contestRecent.push({
+                platform: 'leetcode',
+                title: `🏆 ${c.contest.title} (${solved}/${c.totalProblems} solved)`,
+                url: `https://leetcode.com/contest/${slug}`,
+                timestamp: c.contest.startTime,
+                verdict: 'Accepted',
+                isContest: true,
+                problemsSolved: solved
+              });
+            }
+
             lcContests.push({
               platform: 'leetcode',
               contestName: c.contest.title,
@@ -670,6 +695,9 @@
           }
         }
 
+        // Merge practice and contest solves, newest first
+        const mergedRecentSubs = [...recentSubs, ...contestRecent].sort((a, b) => b.timestamp - a.timestamp);
+
         // Accurate solved count: unique problems, not submission count
         const totalSolvedCount = solvedData?.solvedProblem != null
           ? solvedData.solvedProblem
@@ -691,13 +719,13 @@
           easySolved: solvedData?.easySolved || 0,
           mediumSolved: solvedData?.mediumSolved || 0,
           hardSolved: solvedData?.hardSolved || 0,
-          totalContestSolved: 0,
+          totalContestSolved: totalLcContestSolved,
           streak,
           totalActiveDays: totalActiveDays || Object.keys(dailyMap).length,
           dailyMap,
-          dailyContestMap: {},
+          dailyContestMap,
           contests: lcContests,
-          recentSubmissions: recentSubs
+          recentSubmissions: mergedRecentSubs
         };
       } catch (e) {
         errors.leetcode = 'Direct LeetCode query not reachable: ' + e.message;

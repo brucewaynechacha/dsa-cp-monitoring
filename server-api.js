@@ -118,6 +118,81 @@ export async function fetchLeetCode(username) {
           if (sRes.ok) solvedData = await sRes.json();
         } catch (_) {}
 
+        let totalContestSolved = 0;
+        const dailyContestMap = {};
+        const contestRecent = [];
+        let lcContests = [];
+        let contestInfo = null;
+
+        try {
+          const cRes = await fetch(`https://alfa-leetcode-api.onrender.com/userContestRankingInfo/${encodeURIComponent(username)}`, {
+            signal: AbortSignal.timeout(8000)
+          });
+          if (cRes.ok) {
+            const ctJson = await cRes.json();
+            contestInfo = ctJson?.data?.userContestRanking || null;
+            const hist = ctJson?.data?.userContestRankingHistory || [];
+            let prev = 1500;
+            for (const c of hist.filter(x => x.attended)) {
+              const nr = Math.round(c.rating || 0);
+              const delta = Math.round(nr - prev);
+              prev = nr;
+              const slug = c.contest.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+              const solved = c.problemsSolved || 0;
+              if (solved > 0) {
+                totalContestSolved += solved;
+                const cDate = new Date(c.contest.startTime * 1000);
+                const key = toDateKey(cDate);
+                dailyMap[key] = (dailyMap[key] || 0) + solved;
+                dailyContestMap[key] = (dailyContestMap[key] || 0) + solved;
+                contestRecent.push({
+                  platform: 'leetcode',
+                  title: `🏆 ${c.contest.title} (${solved}/${c.totalProblems} solved)`,
+                  url: `https://leetcode.com/contest/${slug}`,
+                  timestamp: c.contest.startTime,
+                  verdict: 'Accepted',
+                  isContest: true,
+                  problemsSolved: solved
+                });
+              }
+              lcContests.push({
+                platform: 'leetcode',
+                contestName: c.contest.title,
+                contestUrl: `https://leetcode.com/contest/${slug}`,
+                timestamp: c.contest.startTime,
+                problemsSolved: c.problemsSolved,
+                totalProblems: c.totalProblems,
+                rank: c.ranking,
+                newRating: nr,
+                delta
+              });
+            }
+            lcContests.reverse();
+          }
+        } catch (_) {}
+
+        let recentSubs = [];
+        try {
+          const acRes = await fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(username)}/acSubmission?limit=25`, {
+            signal: AbortSignal.timeout(8000)
+          });
+          if (acRes.ok) {
+            const acJson = await acRes.json();
+            if (Array.isArray(acJson?.submission)) {
+              recentSubs = acJson.submission.map(sub => ({
+                platform: 'leetcode',
+                title: sub.title,
+                url: `https://leetcode.com/problems/${sub.titleSlug}/`,
+                timestamp: parseInt(sub.timestamp, 10),
+                verdict: 'Accepted',
+                isContest: false
+              }));
+            }
+          }
+        } catch (_) {}
+
+        const mergedRecent = [...recentSubs, ...contestRecent].sort((a, b) => b.timestamp - a.timestamp);
+
         const totalSolvedCount = solvedData?.solvedProblem != null
           ? solvedData.solvedProblem
           : (solvedData?.acSubmissionNum?.find(s => s.difficulty === 'All')?.count || Object.keys(dailyMap).length);
@@ -125,7 +200,15 @@ export async function fetchLeetCode(username) {
         const result = {
           platform: 'leetcode',
           username,
-          profile: { name: username, avatar: '', ranking: null },
+          profile: {
+            name: username,
+            avatar: '',
+            ranking: null,
+            contestRating: Math.round(contestInfo?.rating || 0),
+            globalRanking: contestInfo?.globalRanking || null,
+            topPercentage: contestInfo?.topPercentage || null,
+            contestsAttended: contestInfo?.attendedContestsCount || lcContests.length
+          },
           totalSolved: totalSolvedCount,
           easySolved: solvedData?.easySolved || 0,
           mediumSolved: solvedData?.mediumSolved || 0,
@@ -133,9 +216,10 @@ export async function fetchLeetCode(username) {
           streak: backupJson.streak || 0,
           totalActiveDays: backupJson.totalActiveDays || Object.keys(dailyMap).length,
           dailyMap,
-          dailyContestMap: {},
-          totalContestSolved: 0,
-          recentSubmissions: []
+          dailyContestMap,
+          totalContestSolved,
+          contests: lcContests,
+          recentSubmissions: mergedRecent
         };
         setCache(cacheKey, result);
         return result;
