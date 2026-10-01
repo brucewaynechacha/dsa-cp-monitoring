@@ -596,7 +596,8 @@
 
     if (lcHandle) {
       try {
-        const [calRes, solvedRes, profileRes, contestRes, acSubRes] = await Promise.allSettled([
+        const [statsRes, calRes, solvedRes, profileRes, contestRes, acSubRes] = await Promise.allSettled([
+          fetch(`https://leetcode-stats-api.herokuapp.com/${encodeURIComponent(lcHandle)}`),
           fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(lcHandle)}/calendar`),
           fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(lcHandle)}/solved`),
           fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(lcHandle)}`),
@@ -607,8 +608,35 @@
         const dailyMap = {};
         let streak = 0;
         let totalActiveDays = 0;
+        let totalSolvedCount = 0;
+        let easySolved = 0;
+        let mediumSolved = 0;
+        let hardSolved = 0;
+        let ranking = null;
+        let avatar = '';
+        let realName = lcHandle;
 
-        if (calRes.status === 'fulfilled' && calRes.value.ok) {
+        // 1. Process leetcode-stats-api (fast, reliable CORS stats & calendar)
+        if (statsRes.status === 'fulfilled' && statsRes.value.ok) {
+          const statsJson = await statsRes.value.json().catch(() => null);
+          if (statsJson?.status === 'success') {
+            const rawCal = typeof statsJson.submissionCalendar === 'string'
+              ? JSON.parse(statsJson.submissionCalendar || '{}')
+              : (statsJson.submissionCalendar || {});
+            for (const [tsStr, count] of Object.entries(rawCal)) {
+              const dateStr = formatDateStr(new Date(parseInt(tsStr, 10) * 1000));
+              dailyMap[dateStr] = (dailyMap[dateStr] || 0) + count;
+            }
+            totalSolvedCount = statsJson.totalSolved || 0;
+            easySolved = statsJson.easySolved || 0;
+            mediumSolved = statsJson.mediumSolved || 0;
+            hardSolved = statsJson.hardSolved || 0;
+            ranking = statsJson.ranking || null;
+          }
+        }
+
+        // 2. Backup calendar from alfa-leetcode if needed
+        if (Object.keys(dailyMap).length === 0 && calRes.status === 'fulfilled' && calRes.value.ok) {
           const calJson = await calRes.value.json().catch(() => null);
           const rawCal = JSON.parse(calJson?.submissionCalendar || '{}');
           for (const [tsStr, count] of Object.entries(rawCal)) {
@@ -619,21 +647,28 @@
           totalActiveDays = calJson?.totalActiveDays || 0;
         }
 
-        let solvedData = null;
-        if (solvedRes.status === 'fulfilled' && solvedRes.value.ok) {
-          solvedData = await solvedRes.value.json().catch(() => null);
+        // 3. Backup solved count from alfa-leetcode if needed
+        if (totalSolvedCount === 0 && solvedRes.status === 'fulfilled' && solvedRes.value.ok) {
+          const solvedData = await solvedRes.value.json().catch(() => null);
+          totalSolvedCount = solvedData?.solvedProblem || 0;
+          easySolved = solvedData?.easySolved || 0;
+          mediumSolved = solvedData?.mediumSolved || 0;
+          hardSolved = solvedData?.hardSolved || 0;
         }
 
-        let profileData = null;
+        // 4. User profile info
         if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
-          profileData = await profileRes.value.json().catch(() => null);
+          const profileData = await profileRes.value.json().catch(() => null);
+          if (profileData?.name) realName = profileData.name;
+          if (profileData?.avatar) avatar = profileData.avatar;
+          if (profileData?.ranking) ranking = profileData.ranking;
         }
 
         let totalLcContestSolved = 0;
         const dailyContestMap = {};
         const contestRecent = [];
-
         let contestInfo = null;
+
         if (contestRes.status === 'fulfilled' && contestRes.value.ok) {
           const ctJson = await contestRes.value.json().catch(() => null);
           contestInfo = ctJson?.data?.userContestRanking || null;
@@ -695,30 +730,28 @@
           }
         }
 
-        // Merge practice and contest solves, newest first
         const mergedRecentSubs = [...recentSubs, ...contestRecent].sort((a, b) => b.timestamp - a.timestamp);
 
-        // Accurate solved count: unique problems, not submission count
-        const totalSolvedCount = solvedData?.solvedProblem != null
-          ? solvedData.solvedProblem
-          : (solvedData?.acSubmissionNum?.find(s => s.difficulty === 'All')?.count || Object.keys(dailyMap).length);
+        if (totalSolvedCount === 0) {
+          totalSolvedCount = Object.keys(dailyMap).length;
+        }
 
         lcData = {
           platform: 'leetcode',
           username: lcHandle,
           profile: {
-            name: profileData?.name || lcHandle,
-            avatar: profileData?.avatar || '',
-            ranking: profileData?.ranking || null,
+            name: realName,
+            avatar,
+            ranking,
             contestRating: Math.round(contestInfo?.rating || 0),
             globalRanking: contestInfo?.globalRanking || null,
             topPercentage: contestInfo?.topPercentage || null,
             contestsAttended: contestInfo?.attendedContestsCount || lcContests.length
           },
           totalSolved: totalSolvedCount,
-          easySolved: solvedData?.easySolved || 0,
-          mediumSolved: solvedData?.mediumSolved || 0,
-          hardSolved: solvedData?.hardSolved || 0,
+          easySolved,
+          mediumSolved,
+          hardSolved,
           totalContestSolved: totalLcContestSolved,
           streak,
           totalActiveDays: totalActiveDays || Object.keys(dailyMap).length,
