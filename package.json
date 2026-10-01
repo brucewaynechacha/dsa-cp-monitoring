@@ -5,11 +5,22 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "start": "node server.js",
-    "dev": "node --watch server.js",
-    "build": "vite build"
+    "server": "node server.js"
   },
-  "keywords": ["leetcode", "codeforces", "heatmap", "dsa", "competitive-programming"],
+  "keywords": [
+    "leetcode",
+    "codeforces",
+    "heatmap",
+    "dsa",
+    "competitive-programming"
+  ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "vite": "^8.3.2"
+  }
 }

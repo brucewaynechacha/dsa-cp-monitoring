@@ -698,11 +698,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Static File Serving
-  let filePath = path.join(__dirname, 'public', pathname === '/' ? 'index.html' : pathname);
+  const staticRoot = fs.existsSync(path.join(__dirname, 'dist'))
+    ? path.join(__dirname, 'dist')
+    : path.join(__dirname, 'public');
+
+  let filePath = path.join(staticRoot, pathname === '/' ? 'index.html' : pathname);
   const ext = path.extname(filePath).toLowerCase();
 
   // Basic security check: prevent directory traversal
-  if (!filePath.startsWith(path.join(__dirname, 'public'))) {
+  if (!filePath.startsWith(staticRoot)) {
     res.writeHead(403);
     res.end('Forbidden');
     return;

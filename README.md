@@ -29,30 +29,36 @@ A minimalist, high-performance website that tracks your **LeetCode** and **Codef
 
 ## 🚀 Quick Start
 
-Run the server with Node.js (v18+ recommended):
-
+### Development
+1. Start the backend API server:
 ```bash
+npm run server
+```
+2. In a separate terminal, launch the Vite dev server with HMR:
+```bash
+npm run dev
+```
+Open `http://localhost:5173`. Requests to `/api` are automatically proxied to `http://localhost:3000`.
+
+### Production Build & Serve
+Build the production bundle with Vite and start the server:
+```bash
+npm run build
 npm start
 ```
-or:
-```bash
-node server.js
-```
-
-Open your browser at:
-```
-http://localhost:3000
-```
+Open `http://localhost:3000`. `server.js` serves optimized static assets directly from `dist/`.
 
 ---
 
 ## 🛠️ Architecture
 
-- **`server.js`**: Lightweight, zero-dependency Node.js HTTP server.
-  - Serves static assets (`public/`).
+- **`vite.config.js`**: Vite configuration supporting build bundling into `dist/` and local dev proxying.
+- **`src/`**: Modern frontend source code:
+  - `src/main.js`: Main ES module entry point for interactive heatmap, live sync, and multi-user comparison.
+  - `src/style.css`: Theme tokens, responsive styling, and animations.
+- **`index.html`**: Root HTML entry point referencing `/src/main.js`.
+- **`server.js`**: Lightweight Node.js server:
+  - Serves static assets from `dist/` (or `public/`).
   - Proxies LeetCode GraphQL and Codeforces API to prevent CORS issues.
   - In-memory cache with 5-minute TTL to respect upstream rate limits.
-  - Endpoint: `GET /api/user-data?leetcode=:username&codeforces=:handle`.
-- **`public/index.html`**: Clean semantic markup.
-- **`public/style.css`**: Modern, minimalist styling with theme tokens and responsive layouts.
-- **`public/app.js`**: Interactive SVG heatmap generation, date calculation, tooltip management, and automatic client-side fallback.
+  - Endpoints: `GET /api/activity`, `GET /api/comparison`, `GET /api/upcoming-contests`.
