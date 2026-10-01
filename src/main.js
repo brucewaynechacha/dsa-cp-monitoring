@@ -760,6 +760,7 @@
           contests: lcContests,
           recentSubmissions: mergedRecentSubs
         };
+        console.log('LeetCode contest data:', lcData.totalContestSolved, lcData.contests.length, lcData.recentSubmissions.filter(s=>s.isContest).length);
       } catch (e) {
         errors.leetcode = 'Direct LeetCode query not reachable: ' + e.message;
       }
