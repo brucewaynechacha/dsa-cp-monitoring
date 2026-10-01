@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { handleApiRequest } from './server-api.js';
 
 export default defineConfig({
+  base: './',
   server: {
     port: 5173
   },
