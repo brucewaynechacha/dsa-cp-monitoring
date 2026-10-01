@@ -1,0 +1,14 @@
+{
+  "name": "dsa-activity-heatmap",
+  "version": "1.0.0",
+  "description": "Minimalist website to track LeetCode and Codeforces submissions in a unified heatmap",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": ["leetcode", "codeforces", "heatmap", "dsa", "competitive-programming"],
+  "author": "",
+  "license": "MIT"
+}

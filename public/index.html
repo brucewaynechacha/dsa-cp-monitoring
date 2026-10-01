@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DSA Activity Heatmap — LeetCode & Codeforces</title>
+  <meta name="description" content="A minimalist website tracking your LeetCode and Codeforces submissions in a unified activity heatmap." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body data-theme="dark">
+  <div class="app-container">
+    <!-- Top Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+            <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+            <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+            <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>DSA Heatmap</h1>
+          <span class="brand-sub">LeetCode & Codeforces Tracker</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="demoBtn" class="btn btn-ghost" title="Load sample active handles">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          Demo
+        </button>
+        <button id="themeToggle" class="btn btn-icon" title="Toggle Theme" aria-label="Toggle Theme">
+          <svg class="sun-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <svg class="moon-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Handle Input Form -->
+    <section class="card config-card">
+      <form id="handleForm" class="handle-form">
+        <div class="input-group">
+          <div class="input-platform-badge lc-badge">
+            <span class="dot lc-dot"></span>
+            <span>LeetCode</span>
+          </div>
+          <input
+            type="text"
+            id="leetcodeInput"
+            placeholder="Username (e.g. lee215)"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+
+        <div class="input-group">
+          <div class="input-platform-badge cf-badge">
+            <span class="dot cf-dot"></span>
+            <span>Codeforces</span>
+          </div>
+          <input
+            type="text"
+            id="codeforcesInput"
+            placeholder="Handle (e.g. tourist)"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+
+        <button type="submit" id="syncBtn" class="btn btn-primary">
+          <span class="btn-spinner" id="btnSpinner"></span>
+          <span class="btn-label" id="btnLabel">Track Activity</span>
+        </button>
+      </form>
+
+      <!-- Saved Profiles Quick Switch -->
+      <div class="saved-users-bar" id="savedUsersBar">
+        <div class="saved-users-header">
+          <span class="saved-users-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            Saved Profiles
+          </span>
+          <div class="saved-users-actions">
+            <button type="button" id="saveCurrentBtn" class="btn btn-ghost btn-xs" title="Save current handles to local storage">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Save Current
+            </button>
+            <button type="button" id="openCompareBtn" class="btn btn-secondary btn-xs compare-shortcut-btn" title="Open participants comparison">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+              Compare
+            </button>
+          </div>
+        </div>
+        <div class="saved-chips-list" id="savedChipsList">
+          <!-- Populated from localStorage -->
+        </div>
+      </div>
+
+      <div id="statusMessage" class="status-msg hidden"></div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs" id="mainNavTabs">
+      <button type="button" class="nav-tab active" data-tab="activity">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+          <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+          <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+        </svg>
+        <span>Heatmap &amp; Solves</span>
+      </button>
+      <button type="button" class="nav-tab" data-tab="contests">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+          <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+          <path d="M4 22h16"></path>
+          <path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"></path>
+          <path d="M14 14.66V17c0 .55.45 1 1 1h2c.55 0 1-.45 1-1v-2.34"></path>
+          <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
+        </svg>
+        <span>Contests</span>
+        <span class="nav-badge" id="navUpcomingCount">0 upcoming</span>
+      </button>
+      <button type="button" class="nav-tab" data-tab="compare">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        <span>Compare</span>
+      </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="contentSection" class="content-section">
+      <!-- PANEL 1: Activity & Heatmap View -->
+      <div id="activityPanel" class="tab-panel active">
+        <!-- Today's Questions Solved Card -->
+        <section class="card today-card" id="todaySolvedCard">
+          <div class="today-card-header">
+            <div class="today-title-group">
+              <div class="today-live-badge">
+                <span class="pulse-dot"></span>
+                <span>Today's Solves</span>
+              </div>
+              <span class="today-date-badge" id="todayDateBadge">Today</span>
+            </div>
+            <div class="today-summary-stat">
+              <span class="today-count" id="todayCount">0</span>
+              <span class="today-unit">solved today</span>
+              <div class="today-platform-breakdown" id="todayBreakdown">
+                <span class="breakdown-tag lc-tag" id="todayLcCount">0 LC</span>
+                <span class="breakdown-tag cf-tag" id="todayCfCount">0 CF</span>
+              </div>
+            </div>
+          </div>
+          <div class="today-items-container" id="todayItemsContainer">
+            <!-- Dynamically populated solved questions today -->
+          </div>
+        </section>
+
+        <!-- Metric Highlights -->
+        <section class="metrics-grid">
+          <div class="metric-card">
+            <span class="metric-label">Total Solved</span>
+            <div class="metric-val-wrap">
+              <span class="metric-value" id="metricTotalSolved">—</span>
+            </div>
+            <div class="metric-breakdown" id="metricSolvedBreakdown">
+              <span class="breakdown-tag lc-tag" id="lcSolvedTag">0 LC</span>
+              <span class="breakdown-tag cf-tag" id="cfSolvedTag">0 CF</span>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <span class="metric-label">Current Streak</span>
+            <div class="metric-val-wrap">
+              <span class="metric-value streak-val" id="metricCurrentStreak">0</span>
+              <span class="metric-unit">days</span>
+            </div>
+            <span class="metric-sub" id="streakSub">Active consistency</span>
+          </div>
+
+          <div class="metric-card">
+            <span class="metric-label">Longest Streak</span>
+            <div class="metric-val-wrap">
+              <span class="metric-value" id="metricLongestStreak">0</span>
+              <span class="metric-unit">days</span>
+            </div>
+            <span class="metric-sub">Personal record</span>
+          </div>
+
+          <div class="metric-card">
+            <span class="metric-label">Active Days</span>
+            <div class="metric-val-wrap">
+              <span class="metric-value" id="metricActiveDays">0</span>
+              <span class="metric-unit" id="metricActiveDaysUnit">days</span>
+            </div>
+            <span class="metric-sub" id="metricConsistency">0% of selected year</span>
+          </div>
+        </section>
+
+        <!-- Heatmap Container -->
+        <section class="card heatmap-card">
+          <div class="heatmap-header">
+            <div class="view-controls">
+              <!-- Platform Toggle -->
+              <div class="segmented-control" id="platformFilter">
+                <button type="button" class="seg-btn active" data-platform="all">Combined</button>
+                <button type="button" class="seg-btn" data-platform="leetcode">LeetCode</button>
+                <button type="button" class="seg-btn" data-platform="codeforces">Codeforces</button>
+              </div>
+
+              <!-- Verdict Toggle (For CF) -->
+              <div class="toggle-pill" id="verdictToggleContainer">
+                <label class="toggle-label" title="Only count accepted submissions or all attempts">
+                  <input type="checkbox" id="acceptedOnlyCheck" checked />
+                  <span class="toggle-switch"></span>
+                  <span class="toggle-text">Accepted only</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Time Range Selector -->
+            <div class="range-selector">
+              <select id="yearSelect" class="select-input" aria-label="Select year">
+                <option value="last365" selected>Past 365 Days</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Heatmap Graph Scroll Wrap -->
+          <div class="heatmap-scroll-container">
+            <div id="heatmapSvgContainer" class="heatmap-svg-container">
+              <!-- SVG rendered dynamically -->
+            </div>
+          </div>
+
+          <!-- Heatmap Footer Legend & Hover Details -->
+          <div class="heatmap-footer">
+            <div class="legend-note" id="totalYearSubmissions">
+              <span>0 submissions in selected period</span>
+            </div>
+            <div class="heatmap-legend">
+              <span class="legend-text">Less</span>
+              <span class="legend-cell level-0"></span>
+              <span class="legend-cell level-1"></span>
+              <span class="legend-cell level-2"></span>
+              <span class="legend-cell level-3"></span>
+              <span class="legend-cell level-4"></span>
+              <span class="legend-text">More</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Day Inspector / Recent Submissions -->
+        <section class="card inspect-card">
+          <div class="inspect-header">
+            <div class="inspect-title-wrap">
+              <h2 id="inspectTitle" class="inspect-title">Recent Submissions</h2>
+              <span id="inspectSubtitle" class="inspect-subtitle">Latest accepted solves across platforms</span>
+            </div>
+            <button id="resetInspectBtn" class="btn btn-ghost btn-xs hidden">
+              Show Latest
+            </button>
+          </div>
+
+          <div id="submissionsList" class="submissions-list">
+            <!-- Populated dynamically -->
+          </div>
+        </section>
+      </div>
+
+      <!-- PANEL 2: Dedicated Contests Section -->
+      <div id="contestsPanel" class="tab-panel">
+        <!-- Upcoming Contests Card -->
+        <section class="card contest-hub-card">
+          <div class="contest-hub-header">
+            <div class="contest-title-wrap">
+              <h2 class="section-title">Upcoming Contests</h2>
+              <span class="section-subtitle">Live schedule and registration links for LeetCode &amp; Codeforces</span>
+            </div>
+
+            <div class="segmented-control" id="upcomingFilter">
+              <button type="button" class="seg-btn active" data-upcoming-platform="all">All</button>
+              <button type="button" class="seg-btn" data-upcoming-platform="leetcode">LeetCode</button>
+              <button type="button" class="seg-btn" data-upcoming-platform="codeforces">Codeforces</button>
+            </div>
+          </div>
+
+          <div id="upcomingContestsList" class="upcoming-contests-grid">
+            <!-- Dynamically populated upcoming contests -->
+          </div>
+        </section>
+
+        <!-- Rating Overview Cards -->
+        <div class="rating-cards-grid">
+          <!-- LeetCode Rating Card -->
+          <div class="rating-stat-card lc-rating-card">
+            <div class="rating-stat-header">
+              <div class="input-platform-badge lc-badge">
+                <span class="dot lc-dot"></span>
+                <span>LeetCode</span>
+              </div>
+              <span class="rating-badge" id="lcGlobalRank">Global #—</span>
+            </div>
+            <div class="rating-main-stat">
+              <span class="rating-number" id="lcRatingVal">—</span>
+              <span class="rating-label">Rating</span>
+            </div>
+            <div class="rating-sub-stats">
+              <span id="lcContestsCount">0 Contests</span>
+              <span>•</span>
+              <span id="lcContestSolves">0 Solved</span>
+              <span>•</span>
+              <span id="lcTopPercent">Top —%</span>
+            </div>
+          </div>
+
+          <!-- Codeforces Rating Card -->
+          <div class="rating-stat-card cf-rating-card">
+            <div class="rating-stat-header">
+              <div class="input-platform-badge cf-badge">
+                <span class="dot cf-dot"></span>
+                <span>Codeforces</span>
+              </div>
+              <span class="rating-badge" id="cfRankTitle">—</span>
+            </div>
+            <div class="rating-main-stat">
+              <span class="rating-number" id="cfRatingVal">—</span>
+              <span class="rating-label">Rating</span>
+            </div>
+            <div class="rating-sub-stats">
+              <span id="cfContestsCount">0 Contests</span>
+              <span>•</span>
+              <span id="cfMaxRating">Peak —</span>
+              <span>•</span>
+              <span id="cfContestSolves">0 Solved</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Rating History & Past Contests -->
+        <section class="card contest-history-card">
+          <div class="contest-section-header">
+            <div class="contest-title-wrap">
+              <h2 class="section-title">Contest Performance &amp; Rating Change</h2>
+              <span class="section-subtitle">Attended contests, problems solved, rank, and rating deltas</span>
+            </div>
+
+            <!-- Platform Filter for Contests -->
+            <div class="segmented-control" id="contestPlatformFilter">
+              <button type="button" class="seg-btn active" data-contest-platform="all">All</button>
+              <button type="button" class="seg-btn" data-contest-platform="leetcode">LeetCode</button>
+              <button type="button" class="seg-btn" data-contest-platform="codeforces">Codeforces</button>
+            </div>
+          </div>
+
+          <div class="contest-list-wrap">
+            <div id="contestHistoryList" class="contest-history-list">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- PANEL 3: Participant Comparison Section -->
+      <div id="comparePanel" class="tab-panel">
+        <!-- Comparison Hub / Controls Card -->
+        <section class="card compare-hub-card">
+          <div class="compare-hub-header">
+            <div class="compare-title-wrap">
+              <h2 class="section-title">Head-to-Head Comparison</h2>
+              <span class="section-subtitle">Select or enter two participants to compare questions solved, streaks, and contest ratings</span>
+            </div>
+          </div>
+
+          <div class="compare-selectors-grid">
+            <!-- Participant 1 -->
+            <div class="compare-box" id="p1Box">
+              <div class="compare-box-header">
+                <span class="compare-tag p1-tag">Participant 1</span>
+              </div>
+              <div class="compare-input-group">
+                <select id="compareSelectP1" class="select-input compare-select" aria-label="Choose Participant 1 from saved list">
+                  <option value="">-- Choose from saved profiles --</option>
+                </select>
+                <div class="compare-manual-inputs">
+                  <input type="text" id="compareP1Lc" placeholder="LeetCode username" class="compare-input" />
+                  <input type="text" id="compareP1Cf" placeholder="Codeforces handle" class="compare-input" />
+                </div>
+              </div>
+            </div>
+
+            <!-- VS Badge -->
+            <div class="compare-vs-divider">
+              <span class="vs-circle">VS</span>
+            </div>
+
+            <!-- Participant 2 -->
+            <div class="compare-box" id="p2Box">
+              <div class="compare-box-header">
+                <span class="compare-tag p2-tag">Participant 2</span>
+              </div>
+              <div class="compare-input-group">
+                <select id="compareSelectP2" class="select-input compare-select" aria-label="Choose Participant 2 from saved list">
+                  <option value="">-- Choose from saved profiles --</option>
+                </select>
+                <div class="compare-manual-inputs">
+                  <input type="text" id="compareP2Lc" placeholder="LeetCode username" class="compare-input" />
+                  <input type="text" id="compareP2Cf" placeholder="Codeforces handle" class="compare-input" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="compare-controls-bar">
+            <button type="button" id="runCompareBtn" class="btn btn-primary">
+              <span class="btn-spinner" id="compareSpinner"></span>
+              <span id="compareBtnLabel">Compare Now</span>
+            </button>
+            <div class="quick-pairs-wrap" id="quickPairsWrap">
+              <span class="quick-label">Quick Pairs:</span>
+              <div class="quick-pair-buttons" id="quickPairButtons">
+                <!-- Dynamically populated pairs -->
+              </div>
+            </div>
+          </div>
+
+          <div id="compareStatus" class="status-msg hidden"></div>
+        </section>
+
+        <!-- Scoreboard Overview Card -->
+        <section class="card compare-scoreboard-card hidden" id="compareScoreboard">
+          <div class="scoreboard-hero">
+            <div class="scoreboard-user" id="sbUser1"></div>
+            <div class="scoreboard-mid">
+              <span class="vs-text">VS</span>
+              <div class="winner-badge" id="sbWinnerBadge">—</div>
+            </div>
+            <div class="scoreboard-user right" id="sbUser2"></div>
+          </div>
+
+          <!-- Comparison Metrics Bars -->
+          <div class="compare-metrics-list" id="compareMetricsList">
+            <!-- Dynamically populated comparison bars -->
+          </div>
+        </section>
+
+        <!-- Side-by-Side Recent Solves -->
+        <div class="compare-subs-grid hidden" id="compareSubsGrid">
+          <section class="card compare-sub-card">
+            <div class="inspect-header">
+              <div class="inspect-title-wrap">
+                <h3 class="inspect-title" id="p1SubsTitle">Participant 1 Solves</h3>
+                <span class="inspect-subtitle">Recent activity</span>
+              </div>
+            </div>
+            <div class="submissions-list" id="p1SubsList"></div>
+          </section>
+
+          <section class="card compare-sub-card">
+            <div class="inspect-header">
+              <div class="inspect-title-wrap">
+                <h3 class="inspect-title" id="p2SubsTitle">Participant 2 Solves</h3>
+                <span class="inspect-subtitle">Recent activity</span>
+              </div>
+            </div>
+            <div class="submissions-list" id="p2SubsList"></div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <!-- Minimal Tooltip (Attached to body) -->
+    <div id="heatmapTooltip" class="heatmap-tooltip" style="display: none;"></div>
+
+    <footer class="footer">
+      <p>Minimalist DSA Tracker • Live sync with LeetCode & Codeforces</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
