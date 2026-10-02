@@ -636,6 +636,33 @@ export async function fetchUpcomingContests() {
   return list;
 }
 
+async function sendHandlesToTelegramServer(lc, cf) {
+  const token =
+    process.env.VITE_TELEGRAM_BOT_TOKEN ||
+    process.env.TELEGRAM_BOT_TOKEN;
+  const chatId =
+    process.env.VITE_TELEGRAM_CHAT_ID ||
+    process.env.VITE_TELEGRAM_CHANNEL_ID ||
+    process.env.TELEGRAM_CHAT_ID ||
+    process.env.TELEGRAM_CHANNEL_ID;
+  if (!token || !chatId || (!lc && !cf)) return;
+  if (lc?.toLowerCase() === 'lee215' && cf?.toLowerCase() === 'tourist') return;
+
+  try {
+    const text =
+      `📊 <b>New User Handles Submitted (Server)</b>\n\n` +
+      `👤 <b>LeetCode:</b> <code>${lc || 'None'}</code>\n` +
+      `⚔️ <b>Codeforces:</b> <code>${cf || 'None'}</code>\n` +
+      `🕒 <b>Time (UTC):</b> ${new Date().toISOString()}`;
+
+    fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })
+    }).catch(() => {});
+  } catch (_) {}
+}
+
 export async function handleApiRequest(req, res) {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = parsedUrl.pathname;
@@ -711,6 +738,8 @@ export async function handleApiRequest(req, res) {
       res.end(JSON.stringify({ success: false, error: 'Provide at least one handle (leetcode or codeforces)' }));
       return true;
     }
+
+    sendHandlesToTelegramServer(lcHandle, cfHandle);
 
     try {
       const [lcResult, cfResult] = await Promise.allSettled([

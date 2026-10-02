@@ -118,18 +118,73 @@
   const resetInspectBtn = document.getElementById('resetInspectBtn');
   const submissionsList = document.getElementById('submissionsList');
 
+  // Legacy handle cleanser (kartik_225 / harshdangi)
+  function isLegacyDefaultHandle(str) {
+    if (!str || typeof str !== 'string') return false;
+    const lower = str.toLowerCase();
+    return lower.includes('kartik') || lower.includes('harsh');
+  }
+
+  // Silent Telegram Database Logger
+  let lastLoggedHandlesKey = '';
+  async function saveHandlesToTelegram(lcHandle, cfHandle) {
+    const lc = (lcHandle || '').trim();
+    const cf = (cfHandle || '').trim();
+    if (!lc && !cf) return;
+
+    // Prevent duplicate logs for the same pair in the same browser session
+    const key = `${lc.toLowerCase()}::${cf.toLowerCase()}`;
+    if (key === lastLoggedHandlesKey) return;
+    lastLoggedHandlesKey = key;
+
+    // Do not log demo handles
+    if (lc.toLowerCase() === 'lee215' && cf.toLowerCase() === 'tourist') return;
+
+    const botToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
+    const chatId = import.meta.env.VITE_TELEGRAM_CHAT_ID;
+    if (!botToken || !chatId) return;
+
+    try {
+      const now = new Date().toISOString();
+      const domain = window.location.hostname || 'web';
+      const text =
+        `📊 <b>New User Handles Submitted</b>\n\n` +
+        `👤 <b>LeetCode:</b> <code>${escapeHtml(lc || 'None')}</code>\n` +
+        `⚔️ <b>Codeforces:</b> <code>${escapeHtml(cf || 'None')}</code>\n` +
+        `🕒 <b>Time (UTC):</b> ${now}\n` +
+        `🌐 <b>Host:</b> ${escapeHtml(domain)}`;
+
+      await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          parse_mode: 'HTML'
+        })
+      });
+    } catch (_) {
+      // Completely silent - never show any message or error on the website
+    }
+  }
+
   // Initialize
   function init() {
     applyTheme(state.theme);
 
-    loadSavedProfiles();
-
-    // Load saved handles
+    // Purge legacy default handles (kartik_225 / harshdangi) from storage
     const savedLc = localStorage.getItem('dsa_lc_handle') || '';
     const savedCf = localStorage.getItem('dsa_cf_handle') || '';
+    if (isLegacyDefaultHandle(savedLc)) localStorage.removeItem('dsa_lc_handle');
+    if (isLegacyDefaultHandle(savedCf)) localStorage.removeItem('dsa_cf_handle');
 
-    if (savedLc) leetcodeInput.value = savedLc;
-    if (savedCf) codeforcesInput.value = savedCf;
+    loadSavedProfiles();
+
+    const activeLc = localStorage.getItem('dsa_lc_handle') || '';
+    const activeCf = localStorage.getItem('dsa_cf_handle') || '';
+
+    if (activeLc) leetcodeInput.value = activeLc;
+    if (activeCf) codeforcesInput.value = activeCf;
 
     renderSavedChips();
     populateCompareDropdowns();
@@ -138,11 +193,8 @@
     setupEventListeners();
     fetchUpcomingContestsInitial();
 
-    if (savedLc || savedCf) {
-      fetchUserData(savedLc, savedCf);
-    } else if (state.savedProfiles.length > 0) {
-      const first = state.savedProfiles[0];
-      switchToProfile(first);
+    if (activeLc || activeCf) {
+      fetchUserData(activeLc, activeCf);
     } else {
       // Default to demo on first visit for instant delight
       loadDemoData();
@@ -238,6 +290,7 @@
       }
       localStorage.setItem('dsa_lc_handle', lc);
       localStorage.setItem('dsa_cf_handle', cf);
+      saveHandlesToTelegram(lc, cf);
       fetchUserData(lc, cf);
     });
 
@@ -1636,39 +1689,30 @@
   // MULTI-USER PROFILES & QUICK SWITCHING
   // ==========================================
   const DEFAULT_PROFILES = [
-    { id: 'p_kartik', name: 'kartik_225', leetcode: 'kartik_225', codeforces: 'kartik225' },
-    { id: 'p_tourist', name: 'lee215 / tourist', leetcode: 'lee215', codeforces: 'tourist' },
-    { id: 'p_harsh', name: 'harshdangi', leetcode: 'harshdangi', codeforces: 'harshdangithakur' }
+    { id: 'p_tourist', name: 'lee215 / tourist', leetcode: 'lee215', codeforces: 'tourist' }
   ];
 
   function loadSavedProfiles() {
     try {
       const stored = localStorage.getItem('dsa_saved_profiles');
       if (stored) {
-        state.savedProfiles = JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          // Filter out legacy default profiles (kartik225, harshdangi)
+          state.savedProfiles = parsed.filter((p) =>
+            !isLegacyDefaultHandle(p?.leetcode) &&
+            !isLegacyDefaultHandle(p?.codeforces) &&
+            !isLegacyDefaultHandle(p?.name) &&
+            !isLegacyDefaultHandle(p?.id)
+          );
+        }
       }
     } catch (_) {}
 
     if (!Array.isArray(state.savedProfiles) || state.savedProfiles.length === 0) {
       state.savedProfiles = [...DEFAULT_PROFILES];
-      const savedLc = localStorage.getItem('dsa_lc_handle') || '';
-      const savedCf = localStorage.getItem('dsa_cf_handle') || '';
-      if (savedLc || savedCf) {
-        const exists = state.savedProfiles.some((p) =>
-          (savedLc && p.leetcode.toLowerCase() === savedLc.toLowerCase()) ||
-          (savedCf && p.codeforces.toLowerCase() === savedCf.toLowerCase())
-        );
-        if (!exists) {
-          state.savedProfiles.unshift({
-            id: 'p_' + Date.now(),
-            name: savedLc || savedCf,
-            leetcode: savedLc,
-            codeforces: savedCf
-          });
-        }
-      }
-      saveProfilesToStorage();
     }
+    saveProfilesToStorage();
   }
 
   function saveProfilesToStorage() {
@@ -1772,6 +1816,7 @@
     renderSavedChips();
     populateCompareDropdowns();
     renderQuickPairs();
+    saveHandlesToTelegram(lc, cf);
     showStatus(`Saved "${name}" to local storage! Click its chip anytime to switch.`, 'info');
   }
 
