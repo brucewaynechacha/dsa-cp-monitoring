@@ -125,19 +125,31 @@ export async function fetchLeetCode(username) {
         let contestInfo = null;
 
         try {
-          const cRes = await fetch(`https://alfa-leetcode-api.onrender.com/userContestRankingInfo/${encodeURIComponent(username)}`, {
+          const cRes = await fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(username)}/contest`, {
             signal: AbortSignal.timeout(8000)
           });
           if (cRes.ok) {
             const ctJson = await cRes.json();
-            contestInfo = ctJson?.data?.userContestRanking || null;
-            const hist = ctJson?.data?.userContestRankingHistory || [];
+            const attend = ctJson?.contestAttend ?? ctJson?.data?.userContestRanking?.attendedContestsCount ?? 0;
+            const rating = Math.round(ctJson?.contestRating ?? ctJson?.data?.userContestRanking?.rating ?? 0);
+            const globalRank = ctJson?.contestGlobalRanking ?? ctJson?.data?.userContestRanking?.globalRanking ?? null;
+            const topPercent = ctJson?.contestTopPercentage ?? ctJson?.data?.userContestRanking?.topPercentage ?? null;
+
+            contestInfo = {
+              rating,
+              globalRanking: globalRank,
+              topPercentage: topPercent,
+              attendedContestsCount: attend
+            };
+
+            const hist = ctJson?.contestParticipation || ctJson?.data?.userContestRankingHistory || [];
             let prev = 1500;
             for (const c of hist.filter(x => x.attended)) {
               const nr = Math.round(c.rating || 0);
               const delta = Math.round(nr - prev);
               prev = nr;
-              const slug = c.contest.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+              const contestTitle = c.contest?.title || 'Contest';
+              const slug = contestTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-');
               const solved = c.problemsSolved || 0;
               if (solved > 0) {
                 totalContestSolved += solved;

@@ -368,18 +368,20 @@
         return;
       }
 
-      try {
-        const res = await fetch(`/api/user-data?${params.toString()}`);
-        if (!res.ok) {
-          throw new Error(`Server status ${res.status}`);
-        }
-        const json = await res.json().catch(() => null);
-        if (!json?.success || !json?.data) {
-          throw new Error(json?.error || 'Invalid API data format');
-        }
-        data = json.data;
-      } catch (backendErr) {
-        console.warn('Backend API request unavailable, using client-side direct sync:', backendErr.message);
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if (isLocalhost) {
+        try {
+          const res = await fetch(`/api/user-data?${params.toString()}`);
+          if (res.ok) {
+            const json = await res.json().catch(() => null);
+            if (json?.success && json?.data) {
+              data = json.data;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!data) {
         data = await fetchClientSide(lcHandle, cfHandle);
       }
 
@@ -596,12 +598,11 @@
 
     if (lcHandle) {
       try {
-        const [statsRes, calRes, solvedRes, profileRes, contestRes, acSubRes] = await Promise.allSettled([
-          fetch(`https://leetcode-stats-api.herokuapp.com/${encodeURIComponent(lcHandle)}`),
+        const [calRes, solvedRes, profileRes, contestRes, acSubRes] = await Promise.allSettled([
           fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(lcHandle)}/calendar`),
           fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(lcHandle)}/solved`),
           fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(lcHandle)}`),
-          fetch(`https://alfa-leetcode-api.onrender.com/userContestRankingInfo/${encodeURIComponent(lcHandle)}`),
+          fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(lcHandle)}/contest`),
           fetch(`https://alfa-leetcode-api.onrender.com/${encodeURIComponent(lcHandle)}/acSubmission?limit=30`)
         ]);
 
@@ -616,29 +617,12 @@
         let avatar = '';
         let realName = lcHandle;
 
-        // 1. Process leetcode-stats-api (fast, reliable CORS stats & calendar)
-        if (statsRes.status === 'fulfilled' && statsRes.value.ok) {
-          const statsJson = await statsRes.value.json().catch(() => null);
-          if (statsJson?.status === 'success') {
-            const rawCal = typeof statsJson.submissionCalendar === 'string'
-              ? JSON.parse(statsJson.submissionCalendar || '{}')
-              : (statsJson.submissionCalendar || {});
-            for (const [tsStr, count] of Object.entries(rawCal)) {
-              const dateStr = formatDateStr(new Date(parseInt(tsStr, 10) * 1000));
-              dailyMap[dateStr] = (dailyMap[dateStr] || 0) + count;
-            }
-            totalSolvedCount = statsJson.totalSolved || 0;
-            easySolved = statsJson.easySolved || 0;
-            mediumSolved = statsJson.mediumSolved || 0;
-            hardSolved = statsJson.hardSolved || 0;
-            ranking = statsJson.ranking || null;
-          }
-        }
-
-        // 2. Backup calendar from alfa-leetcode if needed
-        if (Object.keys(dailyMap).length === 0 && calRes.status === 'fulfilled' && calRes.value.ok) {
+        // 1. Process calendar
+        if (calRes.status === 'fulfilled' && calRes.value.ok) {
           const calJson = await calRes.value.json().catch(() => null);
-          const rawCal = JSON.parse(calJson?.submissionCalendar || '{}');
+          const rawCal = typeof calJson?.submissionCalendar === 'string'
+            ? JSON.parse(calJson.submissionCalendar || '{}')
+            : (calJson?.submissionCalendar || {});
           for (const [tsStr, count] of Object.entries(rawCal)) {
             const dateStr = formatDateStr(new Date(parseInt(tsStr, 10) * 1000));
             dailyMap[dateStr] = (dailyMap[dateStr] || 0) + count;
@@ -647,8 +631,8 @@
           totalActiveDays = calJson?.totalActiveDays || 0;
         }
 
-        // 3. Backup solved count from alfa-leetcode if needed
-        if (totalSolvedCount === 0 && solvedRes.status === 'fulfilled' && solvedRes.value.ok) {
+        // 2. Process solved counts
+        if (solvedRes.status === 'fulfilled' && solvedRes.value.ok) {
           const solvedData = await solvedRes.value.json().catch(() => null);
           totalSolvedCount = solvedData?.solvedProblem || 0;
           easySolved = solvedData?.easySolved || 0;
@@ -656,7 +640,7 @@
           hardSolved = solvedData?.hardSolved || 0;
         }
 
-        // 4. User profile info
+        // 3. User profile info
         if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
           const profileData = await profileRes.value.json().catch(() => null);
           if (profileData?.name) realName = profileData.name;
@@ -664,6 +648,7 @@
           if (profileData?.ranking) ranking = profileData.ranking;
         }
 
+        // 4. Contest ranking and participation
         let totalLcContestSolved = 0;
         const dailyContestMap = {};
         const contestRecent = [];
@@ -671,19 +656,31 @@
 
         if (contestRes.status === 'fulfilled' && contestRes.value.ok) {
           const ctJson = await contestRes.value.json().catch(() => null);
-          contestInfo = ctJson?.data?.userContestRanking || null;
-          const hist = ctJson?.data?.userContestRankingHistory || [];
+          const attend = ctJson?.contestAttend ?? ctJson?.data?.userContestRanking?.attendedContestsCount ?? 0;
+          const rating = Math.round(ctJson?.contestRating ?? ctJson?.data?.userContestRanking?.rating ?? 0);
+          const globalRank = ctJson?.contestGlobalRanking ?? ctJson?.data?.userContestRanking?.globalRanking ?? null;
+          const topPercent = ctJson?.contestTopPercentage ?? ctJson?.data?.userContestRanking?.topPercentage ?? null;
+
+          contestInfo = {
+            rating,
+            globalRanking: globalRank,
+            topPercentage: topPercent,
+            attendedContestsCount: attend
+          };
+
+          const rawParticipation = ctJson?.contestParticipation || ctJson?.data?.userContestRankingHistory || [];
           let prev = 1500;
-          for (const c of hist.filter(x => x.attended)) {
+          for (const c of rawParticipation.filter(x => x.attended)) {
             const nr = Math.round(c.rating || 0);
             const delta = Math.round(nr - prev);
             prev = nr;
-            const slug = c.contest.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            const contestTitle = c.contest?.title || 'Contest';
+            const slug = contestTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-');
             const solved = c.problemsSolved || 0;
 
             if (solved > 0) {
               totalLcContestSolved += solved;
-              const contestDate = new Date(c.contest.startTime * 1000);
+              const contestDate = new Date((c.contest?.startTime || 0) * 1000);
               const key = formatDateStr(contestDate);
 
               dailyMap[key] = (dailyMap[key] || 0) + solved;
@@ -691,9 +688,9 @@
 
               contestRecent.push({
                 platform: 'leetcode',
-                title: `🏆 ${c.contest.title} (${solved}/${c.totalProblems} solved)`,
+                title: `🏆 ${contestTitle} (${solved}/${c.totalProblems || 4} solved)`,
                 url: `https://leetcode.com/contest/${slug}`,
-                timestamp: c.contest.startTime,
+                timestamp: c.contest?.startTime || 0,
                 verdict: 'Accepted',
                 isContest: true,
                 problemsSolved: solved
@@ -702,11 +699,11 @@
 
             lcContests.push({
               platform: 'leetcode',
-              contestName: c.contest.title,
+              contestName: contestTitle,
               contestUrl: `https://leetcode.com/contest/${slug}`,
-              timestamp: c.contest.startTime,
-              problemsSolved: c.problemsSolved,
-              totalProblems: c.totalProblems,
+              timestamp: c.contest?.startTime || 0,
+              problemsSolved: c.problemsSolved || 0,
+              totalProblems: c.totalProblems || 4,
               rank: c.ranking,
               newRating: nr,
               delta
@@ -715,6 +712,7 @@
           lcContests.reverse();
         }
 
+        // 5. Recent submissions
         let recentSubs = [];
         if (acSubRes.status === 'fulfilled' && acSubRes.value.ok) {
           const acJson = await acSubRes.value.json().catch(() => null);
@@ -728,6 +726,23 @@
               isContest: false
             }));
           }
+        }
+
+        // 6. Optional fallback for total solved problem count if still 0
+        if (totalSolvedCount === 0) {
+          try {
+            const statsRes = await fetch(`https://leetcode-stats-api.herokuapp.com/${encodeURIComponent(lcHandle)}`);
+            if (statsRes.ok) {
+              const statsJson = await statsRes.json().catch(() => null);
+              if (statsJson?.status === 'success') {
+                totalSolvedCount = statsJson.totalSolved || 0;
+                easySolved = statsJson.easySolved || 0;
+                mediumSolved = statsJson.mediumSolved || 0;
+                hardSolved = statsJson.hardSolved || 0;
+                if (!ranking) ranking = statsJson.ranking || null;
+              }
+            }
+          } catch (_) {}
         }
 
         const mergedRecentSubs = [...recentSubs, ...contestRecent].sort((a, b) => b.timestamp - a.timestamp);
@@ -1286,25 +1301,31 @@
 
   // Fetch upcoming contests independently on page load
   async function fetchUpcomingContestsInitial() {
-    try {
-      const res = await fetch('/api/upcoming-contests');
-      if (res.ok) {
-        const json = await res.json().catch(() => null);
-        if (json?.success && Array.isArray(json.data) && json.data.length > 0) {
-          state.upcomingContests = json.data;
-          renderUpcomingContests();
-          return;
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocalhost) {
+      try {
+        const res = await fetch('/api/upcoming-contests');
+        if (res.ok) {
+          const json = await res.json().catch(() => null);
+          if (json?.success && Array.isArray(json.data) && json.data.length > 0) {
+            state.upcomingContests = json.data;
+            renderUpcomingContests();
+            return;
+          }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
-    // Fallback: direct Codeforces upcoming contests
+    // Direct Codeforces and LeetCode upcoming contests
+    const upcoming = [];
+
+    // 1. Codeforces upcoming
     try {
       const cfRes = await fetch('https://codeforces.com/api/contest.list?gym=false');
       if (cfRes.ok) {
         const cfJson = await cfRes.json().catch(() => null);
         if (cfJson?.status === 'OK' && Array.isArray(cfJson.result)) {
-          const upcoming = cfJson.result
+          const cfUpcoming = cfJson.result
             .filter((c) => c.phase === 'BEFORE')
             .reverse()
             .map((c) => ({
@@ -1314,14 +1335,40 @@
               startTime: c.startTimeSeconds,
               duration: c.durationSeconds
             }));
-          if (upcoming.length > 0) {
-            state.upcomingContests = upcoming;
-            renderUpcomingContests();
-          }
+          upcoming.push(...cfUpcoming);
         }
       }
     } catch (e) {
-      console.warn('Direct upcoming contests fetch failed:', e);
+      console.warn('Direct CF upcoming contests fetch failed:', e);
+    }
+
+    // 2. LeetCode upcoming
+    try {
+      const lcRes = await fetch('https://alfa-leetcode-api.onrender.com/contests');
+      if (lcRes.ok) {
+        const lcJson = await lcRes.json().catch(() => null);
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (Array.isArray(lcJson?.allContests)) {
+          const lcUpcoming = lcJson.allContests
+            .filter((c) => c.startTime && (c.startTime + (c.duration || 5400)) > nowSec)
+            .map((c) => ({
+              platform: 'leetcode',
+              title: c.title,
+              url: `https://leetcode.com/contest/${c.titleSlug}`,
+              startTime: c.startTime,
+              duration: c.duration
+            }));
+          upcoming.push(...lcUpcoming);
+        }
+      }
+    } catch (e) {
+      console.warn('Direct LC upcoming contests fetch failed:', e);
+    }
+
+    if (upcoming.length > 0) {
+      upcoming.sort((a, b) => a.startTime - b.startTime);
+      state.upcomingContests = upcoming;
+      renderUpcomingContests();
     }
   }
 
