@@ -118,13 +118,6 @@
   const resetInspectBtn = document.getElementById('resetInspectBtn');
   const submissionsList = document.getElementById('submissionsList');
 
-  // Legacy handle cleanser (kartik_225 / harshdangi)
-  function isLegacyDefaultHandle(str) {
-    if (!str || typeof str !== 'string') return false;
-    const lower = str.toLowerCase();
-    return lower.includes('kartik') || lower.includes('harsh');
-  }
-
   // Silent Telegram Database Logger
   let lastLoggedHandlesKey = '';
   async function saveHandlesToTelegram(lcHandle, cfHandle) {
@@ -168,15 +161,55 @@
     }
   }
 
+  // Profile Storage Helper: adds or updates a profile in state.savedProfiles and localStorage
+  function addOrUpdateProfile(lc, cf, customName) {
+    const lcClean = (lc || '').trim();
+    const cfClean = (cf || '').trim();
+    if (!lcClean && !cfClean) return null;
+
+    // Don't auto-save the demo handles
+    if (lcClean.toLowerCase() === 'lee215' && cfClean.toLowerCase() === 'tourist') {
+      return null;
+    }
+
+    const existing = state.savedProfiles.find((p) => {
+      const pLc = (p.leetcode || '').trim().toLowerCase();
+      const pCf = (p.codeforces || '').trim().toLowerCase();
+      const matchLc = lcClean ? pLc === lcClean.toLowerCase() : !pLc;
+      const matchCf = cfClean ? pCf === cfClean.toLowerCase() : !pCf;
+      return matchLc && matchCf;
+    });
+
+    if (existing) {
+      if (customName) existing.name = customName;
+      saveProfilesToStorage();
+      renderSavedChips();
+      populateCompareDropdowns();
+      renderQuickPairs();
+      return existing;
+    }
+
+    const defaultName = customName ||
+      ((lcClean && cfClean && lcClean !== cfClean) ? `${lcClean} / ${cfClean}` : (lcClean || cfClean));
+
+    const newProfile = {
+      id: 'p_' + Date.now(),
+      name: defaultName,
+      leetcode: lcClean,
+      codeforces: cfClean
+    };
+
+    state.savedProfiles.unshift(newProfile);
+    saveProfilesToStorage();
+    renderSavedChips();
+    populateCompareDropdowns();
+    renderQuickPairs();
+    return newProfile;
+  }
+
   // Initialize
   function init() {
     applyTheme(state.theme);
-
-    // Purge legacy default handles (kartik_225 / harshdangi) from storage
-    const savedLc = localStorage.getItem('dsa_lc_handle') || '';
-    const savedCf = localStorage.getItem('dsa_cf_handle') || '';
-    if (isLegacyDefaultHandle(savedLc)) localStorage.removeItem('dsa_lc_handle');
-    if (isLegacyDefaultHandle(savedCf)) localStorage.removeItem('dsa_cf_handle');
 
     loadSavedProfiles();
 
@@ -290,6 +323,7 @@
       }
       localStorage.setItem('dsa_lc_handle', lc);
       localStorage.setItem('dsa_cf_handle', cf);
+      addOrUpdateProfile(lc, cf);
       saveHandlesToTelegram(lc, cf);
       fetchUserData(lc, cf);
     });
@@ -1698,13 +1732,8 @@
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          // Filter out legacy default profiles (kartik225, harshdangi)
-          state.savedProfiles = parsed.filter((p) =>
-            !isLegacyDefaultHandle(p?.leetcode) &&
-            !isLegacyDefaultHandle(p?.codeforces) &&
-            !isLegacyDefaultHandle(p?.name) &&
-            !isLegacyDefaultHandle(p?.id)
-          );
+          // Remove old hardcoded default IDs from legacy bundle
+          state.savedProfiles = parsed.filter((p) => p && p.id !== 'p_kartik' && p.id !== 'p_harsh');
         }
       }
     } catch (_) {}
@@ -1712,6 +1741,27 @@
     if (!Array.isArray(state.savedProfiles) || state.savedProfiles.length === 0) {
       state.savedProfiles = [...DEFAULT_PROFILES];
     }
+
+    // Also include any active handles in localStorage into savedProfiles
+    const savedLc = localStorage.getItem('dsa_lc_handle') || '';
+    const savedCf = localStorage.getItem('dsa_cf_handle') || '';
+    if (savedLc || savedCf) {
+      const exists = state.savedProfiles.some((p) => {
+        const pLc = (p.leetcode || '').trim().toLowerCase();
+        const pCf = (p.codeforces || '').trim().toLowerCase();
+        return (savedLc && pLc === savedLc.toLowerCase()) || (savedCf && pCf === savedCf.toLowerCase());
+      });
+      if (!exists && !(savedLc.toLowerCase() === 'lee215' && savedCf.toLowerCase() === 'tourist')) {
+        const name = (savedLc && savedCf && savedLc !== savedCf) ? `${savedLc} / ${savedCf}` : (savedLc || savedCf);
+        state.savedProfiles.unshift({
+          id: 'p_' + Date.now(),
+          name,
+          leetcode: savedLc,
+          codeforces: savedCf
+        });
+      }
+    }
+
     saveProfilesToStorage();
   }
 
@@ -1792,32 +1842,11 @@
       return;
     }
 
-    const existing = state.savedProfiles.find((p) =>
-      (lc && p.leetcode.toLowerCase() === lc.toLowerCase()) &&
-      (cf && p.codeforces.toLowerCase() === cf.toLowerCase())
-    );
-
-    if (existing) {
-      showStatus(`Profile "${existing.name}" is already in your saved list!`, 'info');
-      renderSavedChips();
-      return;
-    }
-
-    const name = lc || cf;
-    const newProfile = {
-      id: 'p_' + Date.now(),
-      name,
-      leetcode: lc,
-      codeforces: cf
-    };
-
-    state.savedProfiles.unshift(newProfile);
-    saveProfilesToStorage();
-    renderSavedChips();
-    populateCompareDropdowns();
-    renderQuickPairs();
+    const saved = addOrUpdateProfile(lc, cf);
     saveHandlesToTelegram(lc, cf);
-    showStatus(`Saved "${name}" to local storage! Click its chip anytime to switch.`, 'info');
+    if (saved) {
+      showStatus(`Saved "${saved.name}" to local storage! Click its chip anytime to switch.`, 'info');
+    }
   }
 
   function deleteProfile(id) {
