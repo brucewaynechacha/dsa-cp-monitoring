@@ -3,13 +3,17 @@ import { handleApiRequest } from './server-api.js';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  const DEFAULT_BOT_TOKEN = '8893294829:AAGgq0tmv1CTr9Xsc_gZfTx1T-Ci832XM5U';
+  const DEFAULT_CHAT_ID = '@hvvisduvbsdkvjbdkvbd';
+
   const botToken =
     env.VITE_TELEGRAM_BOT_TOKEN ||
     env.TELEGRAM_BOT_TOKEN ||
     process.env.VITE_TELEGRAM_BOT_TOKEN ||
     process.env.TELEGRAM_BOT_TOKEN ||
-    '';
-  const chatId =
+    DEFAULT_BOT_TOKEN;
+
+  let chatId =
     env.VITE_TELEGRAM_CHAT_ID ||
     env.VITE_TELEGRAM_CHANNEL_ID ||
     env.TELEGRAM_CHAT_ID ||
@@ -18,7 +22,12 @@ export default defineConfig(({ mode }) => {
     process.env.VITE_TELEGRAM_CHANNEL_ID ||
     process.env.TELEGRAM_CHAT_ID ||
     process.env.TELEGRAM_CHANNEL_ID ||
-    '';
+    DEFAULT_CHAT_ID;
+
+  chatId = String(chatId).trim();
+  if (chatId && !chatId.startsWith('@') && !chatId.startsWith('-')) {
+    chatId = '@' + chatId;
+  }
 
   return {
     base: './',

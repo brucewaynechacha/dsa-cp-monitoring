@@ -133,9 +133,14 @@
     // Do not log demo handles
     if (lc.toLowerCase() === 'lee215' && cf.toLowerCase() === 'tourist') return;
 
-    const botToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
-    const chatId = import.meta.env.VITE_TELEGRAM_CHAT_ID;
+    const botToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '8893294829:AAGgq0tmv1CTr9Xsc_gZfTx1T-Ci832XM5U';
+    let chatId = (import.meta.env.VITE_TELEGRAM_CHAT_ID || '@hvvisduvbsdkvjbdkvbd').trim();
+
     if (!botToken || !chatId) return;
+
+    if (!chatId.startsWith('@') && !chatId.startsWith('-')) {
+      chatId = '@' + chatId;
+    }
 
     try {
       const now = new Date().toISOString();
@@ -147,7 +152,7 @@
         `🕒 <b>Time (UTC):</b> ${now}\n` +
         `🌐 <b>Host:</b> ${escapeHtml(domain)}`;
 
-      await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendMessage`, {
+      const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -156,8 +161,13 @@
           parse_mode: 'HTML'
         })
       });
-    } catch (_) {
-      // Completely silent - never show any message or error on the website
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        console.warn('[Telegram Log Notice]:', errJson?.description || res.statusText);
+      }
+    } catch (e) {
+      console.warn('[Telegram Log Network Notice]:', e.message);
     }
   }
 
@@ -440,6 +450,7 @@
   async function fetchUserData(lcHandle, cfHandle) {
     setLoading(true);
     clearStatus();
+    saveHandlesToTelegram(lcHandle, cfHandle);
 
     try {
       const params = new URLSearchParams();
