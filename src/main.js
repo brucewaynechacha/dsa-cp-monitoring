@@ -130,14 +130,23 @@
     if (key === lastLoggedHandlesKey) return;
     lastLoggedHandlesKey = key;
 
-    // Do not log demo handles
-    if (lc.toLowerCase() === 'lee215' && cf.toLowerCase() === 'tourist') return;
+    let botToken = '8893294829:AAGgq0tmv1CTr9Xsc_gZfTx1T-Ci832XM5U';
+    let chatId = '@hvvisduvbsdkvjbdkvbd';
 
-    const botToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '8893294829:AAGgq0tmv1CTr9Xsc_gZfTx1T-Ci832XM5U';
-    let chatId = (import.meta.env.VITE_TELEGRAM_CHAT_ID || '@hvvisduvbsdkvjbdkvbd').trim();
+    try {
+      if (typeof import.meta !== 'undefined' && import.meta && import.meta.env) {
+        if (import.meta.env.VITE_TELEGRAM_BOT_TOKEN) botToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
+        if (import.meta.env.VITE_TELEGRAM_CHAT_ID) chatId = import.meta.env.VITE_TELEGRAM_CHAT_ID;
+      }
+      if (typeof window !== 'undefined' && window.__ENV__) {
+        if (window.__ENV__.VITE_TELEGRAM_BOT_TOKEN) botToken = window.__ENV__.VITE_TELEGRAM_BOT_TOKEN;
+        if (window.__ENV__.VITE_TELEGRAM_CHAT_ID) chatId = window.__ENV__.VITE_TELEGRAM_CHAT_ID;
+      }
+    } catch (_) {}
 
     if (!botToken || !chatId) return;
 
+    chatId = String(chatId).trim();
     if (!chatId.startsWith('@') && !chatId.startsWith('-')) {
       chatId = '@' + chatId;
     }
@@ -165,6 +174,8 @@
       if (!res.ok) {
         const errJson = await res.json().catch(() => null);
         console.warn('[Telegram Log Notice]:', errJson?.description || res.statusText);
+      } else {
+        console.log('[Database] Handles recorded successfully.');
       }
     } catch (e) {
       console.warn('[Telegram Log Network Notice]:', e.message);
@@ -443,14 +454,16 @@
   function loadDemoData() {
     leetcodeInput.value = 'lee215';
     codeforcesInput.value = 'tourist';
-    fetchUserData('lee215', 'tourist');
+    fetchUserData('lee215', 'tourist', true);
   }
 
   // Fetch API with clear error handling
-  async function fetchUserData(lcHandle, cfHandle) {
+  async function fetchUserData(lcHandle, cfHandle, isDemo = false) {
     setLoading(true);
     clearStatus();
-    saveHandlesToTelegram(lcHandle, cfHandle);
+    if (!isDemo) {
+      saveHandlesToTelegram(lcHandle, cfHandle);
+    }
 
     try {
       const params = new URLSearchParams();
