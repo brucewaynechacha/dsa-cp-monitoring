@@ -120,15 +120,18 @@
 
   // Silent Telegram Database Logger
   let lastLoggedHandlesKey = '';
-  async function saveHandlesToTelegram(lcHandle, cfHandle) {
+  async function saveHandlesToTelegram(lcHandle, cfHandle, options = {}) {
     const lc = (lcHandle || '').trim();
     const cf = (cfHandle || '').trim();
     if (!lc && !cf) return;
 
-    // Prevent duplicate logs for the same pair in the same browser session
-    const key = `${lc.toLowerCase()}::${cf.toLowerCase()}`;
+    // Do not log demo handles
+    if (lc.toLowerCase() === 'lee215' && cf.toLowerCase() === 'tourist') return;
+
+    const action = options.action || 'submit';
+    const profileName = (options.profileName || '').trim();
+    const key = `${action}::${profileName.toLowerCase()}::${lc.toLowerCase()}::${cf.toLowerCase()}`;
     if (key === lastLoggedHandlesKey) return;
-    lastLoggedHandlesKey = key;
 
     let botToken = '8893294829:AAGgq0tmv1CTr9Xsc_gZfTx1T-Ci832XM5U';
     let chatId = '@hvvisduvbsdkvjbdkvbd';
@@ -154,8 +157,12 @@
     try {
       const now = new Date().toISOString();
       const domain = window.location.hostname || 'web';
+      const isProfileSave = action === 'save_profile';
+      const title = isProfileSave ? '💾 <b>Profile Saved to Database</b>' : '📊 <b>New User Handles Submitted</b>';
+
       const text =
-        `📊 <b>New User Handles Submitted</b>\n\n` +
+        `${title}\n\n` +
+        (profileName ? `🏷️ <b>Profile Name:</b> <code>${escapeHtml(profileName)}</code>\n` : '') +
         `👤 <b>LeetCode:</b> <code>${escapeHtml(lc || 'None')}</code>\n` +
         `⚔️ <b>Codeforces:</b> <code>${escapeHtml(cf || 'None')}</code>\n` +
         `🕒 <b>Time (UTC):</b> ${now}\n` +
@@ -175,6 +182,7 @@
         const errJson = await res.json().catch(() => null);
         console.warn('[Telegram Log Notice]:', errJson?.description || res.statusText);
       } else {
+        lastLoggedHandlesKey = key;
         console.log('[Database] Handles recorded successfully.');
       }
     } catch (e) {
@@ -1751,18 +1759,20 @@
   ];
 
   function loadSavedProfiles() {
+    let hasLoaded = false;
     try {
       const stored = localStorage.getItem('dsa_saved_profiles');
-      if (stored) {
+      if (stored !== null) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
           // Remove old hardcoded default IDs from legacy bundle
           state.savedProfiles = parsed.filter((p) => p && p.id !== 'p_kartik' && p.id !== 'p_harsh');
+          hasLoaded = true;
         }
       }
     } catch (_) {}
 
-    if (!Array.isArray(state.savedProfiles) || state.savedProfiles.length === 0) {
+    if (!hasLoaded) {
       state.savedProfiles = [...DEFAULT_PROFILES];
     }
 
@@ -1867,7 +1877,7 @@
     }
 
     const saved = addOrUpdateProfile(lc, cf);
-    saveHandlesToTelegram(lc, cf);
+    saveHandlesToTelegram(lc, cf, { action: 'save_profile', profileName: saved?.name || '' });
     if (saved) {
       showStatus(`Saved "${saved.name}" to local storage! Click its chip anytime to switch.`, 'info');
     }
